@@ -1,0 +1,37 @@
+# Added by Syriana (syriana.store) — deploys this repository to your Cloudflare account on every push.
+# No secret lives here: the job proves which repository it is (GitHub OIDC) and receives a 15-minute key.
+name: Syriana deploy
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+concurrency: syriana-deploy
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: |
+          npm ci || npm install
+      - run: |
+          npm run build
+      - name: Get a 15-minute deploy key from Syriana
+        run: |
+          OIDC=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=syriana-deploy" | jq -r .value)
+          RES=$(curl -sS -f -X POST -H "Authorization: Bearer $OIDC" https://syriana.store/cloud/deploy/token)
+          echo "::add-mask::$(echo "$RES" | jq -r .token)"
+          echo "CLOUDFLARE_API_TOKEN=$(echo "$RES" | jq -r .token)" >> "$GITHUB_ENV"
+          echo "CLOUDFLARE_ACCOUNT_ID=$(echo "$RES" | jq -r .account_id)" >> "$GITHUB_ENV"
+          echo "WORKER=$(echo "$RES" | jq -r .worker)" >> "$GITHUB_ENV"
+      - name: Never publish secrets, then deploy
+        run: |
+          printf '%s\n' '.*' '*.pem' '*.key' 'id_rsa*' 'id_ed25519*' 'cookies.txt' 'node_modules' '*.map' > "dist/.assetsignore"
+          echo '{"name": "WORKER_NAME", "compatibility_date": "2026-09-01", "assets": {"directory": "dist", "not_found_handling": "single-page-application"}}' | sed "s/WORKER_NAME/$WORKER/" > syriana.wrangler.json
+          npx --yes wrangler@4 deploy --config syriana.wrangler.json
