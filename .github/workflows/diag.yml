@@ -1,0 +1,11 @@
+name: diag
+on: workflow_dispatch
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          curl -s https://api.ipify.org; echo
+          for u in https://syriana.store/cloud/deploy/token https://www.syriana.store/cloud/deploy/token https://syriana.software/cloud/deploy/token https://api.syriana.store/cloud/deploy/token; do
+            echo "== $u"; curl -s -o /dev/null -D - -X POST -H "Authorization: Bearer x" "$u" | grep -iE "^HTTP|cf-mitigated|^server|cf-ray|location" || echo "no answer"
+          done
